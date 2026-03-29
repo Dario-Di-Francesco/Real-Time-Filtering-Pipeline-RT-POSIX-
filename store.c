@@ -199,21 +199,12 @@ void *store(void *parameter)
 
         /* Read one message from the selected data queue */
         switch (a) {
+            case 1:
+                selected_qd = butterfilter_qd;
+                break;
             case 0:
             default:
-                error = 0;
-                if (mq_receive(filter_qd, message, MAX_MSG_SIZE, NULL) == -1) {
-                    perror("filter loop: mq_receive (filter)");
-                    error = 1;
-                }
-                break;
-
-            case 1:
-                error = 0;
-                if (mq_receive(butterfilter_qd, message, MAX_MSG_SIZE, NULL) == -1) {
-                    perror("butterfilter loop: mq_receive (butterfilter)");
-                    error = 1;
-                }
+                selected_qd = filter_qd;
                 break;
         }
 
@@ -223,17 +214,21 @@ void *store(void *parameter)
          * - write each field to file followed by comma
          * - write newline and flush
          */
-        if (error != 1) {
-            token = strtok(message, delimiters);
-
-            while (token != NULL) {
-                buffer = atof(token);
-                fprintf(outfd, "%lf,", buffer);
-                token = strtok(NULL, delimiters);
+        for (k = 0; k < STORE_BATCH; k++) {
+            if (mq_receive(selected_qd, message, MAX_MSG_SIZE, NULL) == -1) {
+                perror("store: mq_receive");
+                break;
             }
-
-            fprintf(outfd, "\n");
-            fflush(outfd);
+        token = strtok(message, delimiters);
+        while (token != NULL) {
+            buffer = atof(token);
+            fprintf(outfd, "%lf,", buffer);
+            token = strtok(NULL, delimiters);
+        }
+        fprintf(outfd, "\n");
+        fflush(outfd);
+        }
+            ;
 
             /*
              * Try to read peak count (non-blocking queue).
